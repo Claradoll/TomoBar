@@ -1,0 +1,16 @@
+name: Windows checks
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and run core tests
+        shell: pwsh
+        run: ./build.ps1 -Test
