@@ -15,6 +15,37 @@ namespace LittleTomato {
   static IEnumerable<DependencyObject> Descendants(DependencyObject root){for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){var child=VisualTreeHelper.GetChild(root,i);yield return child;foreach(var nested in Descendants(child))yield return nested;}}
   static void Capture(Window w,string path){if(!w.IsVisible)throw new InvalidOperationException("Cannot capture a hidden window: "+path);w.UpdateLayout();var bmp=new RenderTargetBitmap((int)Math.Ceiling(w.ActualWidth),(int)Math.Ceiling(w.ActualHeight),96,96,PixelFormats.Pbgra32);bmp.Render(w);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bmp));using(var f=File.Create(path))encoder.Save(f);}
   static void Mouse(TaskbarStrip bar,string name,int clicks){typeof(TaskbarStrip).GetMethod(name,BindingFlags.NonPublic|BindingFlags.Instance).Invoke(bar,new object[]{new Forms.MouseEventArgs(Forms.MouseButtons.Left,clicks,40,15,0)});}
+  [System.Runtime.InteropServices.DllImport("user32.dll")]
+  static extern IntPtr SendMessage(IntPtr window,uint message,IntPtr wParam,IntPtr lParam);
+  static void Middle(TaskbarStrip bar,uint message=0){
+   if(message==0){Middle(bar,0x207);Middle(bar,0x208);return;}
+   SendMessage(bar.Handle,message,new IntPtr(message==0x208?0:0x10),new IntPtr(40|(15<<16)));
+  }
+  static void CheckMiddleClick(Program app,Action<bool,string> check){
+   app.Main.Hide();app.Mini.Hide();app.Engine.End();app.Data.Settings.Locked=true;
+   Middle(app.Bar);check(app.Data.Active==null,"middle click while stopped does not start focus");
+   app.Engine.Start(app.Engine.EnsureFocusTask());var focus=app.Data.Active;
+   Middle(app.Bar);check(Object.ReferenceEquals(focus,app.Data.Active)&&focus.Running,"middle click preserves running focus");
+   app.Engine.Pause();Middle(app.Bar);check(Object.ReferenceEquals(focus,app.Data.Active)&&!focus.Running,"middle click preserves paused focus");
+   app.Engine.End();int history=app.Data.Sessions.Count,cycle=app.Data.Cycle;double total=app.Engine.Total(app.Data.Selected);
+   foreach(string kind in new[]{"short","long"})foreach(bool running in new[]{true,false}){
+    app.Data.Active=new ActiveTimer {TaskId=app.Data.Selected,Kind=kind,Duration=kind=="short"?300:900,Running=running,StartUtc=DateTime.UtcNow};app.Engine.Signal();
+    check(app.Bar.AccessibleDescription.Contains("中键跳过休息"),kind+" rest exposes middle-click hint");
+    Middle(app.Bar);check(app.Data.Active==null,kind+(running?" running":" paused")+" rest skipped by native middle-button messages");
+   }
+   check(app.Data.Sessions.Count==history&&app.Data.Cycle==cycle&&app.Engine.Total(app.Data.Selected)==total,"skipping rest preserves focus statistics and cycle");
+   check(app.Store.Load().Active==null,"middle-click skip persisted immediately");
+   check(!app.Main.IsVisible&&!app.Mini.IsVisible&&!app.Bar.AccessibleDescription.Contains("中键跳过休息"),"skip leaves windows hidden and clears rest hint");
+   var rest=new ActiveTimer {TaskId=app.Data.Selected,Kind="short",Duration=300,StartUtc=DateTime.UtcNow};app.Data.Active=rest;app.Engine.Signal();
+   SendMessage(app.Bar.Handle,0x20A,new IntPtr(120<<16),IntPtr.Zero);check(Object.ReferenceEquals(rest,app.Data.Active),"wheel scrolling does not skip rest");
+   Middle(app.Bar,0x207);SendMessage(app.Bar.Handle,0x208,IntPtr.Zero,new IntPtr((app.Bar.Width+20)|(15<<16)));check(Object.ReferenceEquals(rest,app.Data.Active),"middle release outside strip cancels skip");
+   Middle(app.Bar,0x207);app.Engine.Start(app.Engine.Current);focus=app.Data.Active;Middle(app.Bar,0x208);check(Object.ReferenceEquals(focus,app.Data.Active)&&focus.Running,"rest-to-focus transition during gesture cannot end focus");
+   Middle(app.Bar,0x207);app.Data.Active=rest;app.Engine.Signal();Middle(app.Bar,0x208);check(Object.ReferenceEquals(rest,app.Data.Active),"focus-to-rest transition during gesture cannot skip new rest");
+   typeof(TaskbarStrip).GetField("moved",BindingFlags.NonPublic|BindingFlags.Instance).SetValue(app.Bar,true);
+   Middle(app.Bar);check(app.Data.Active==null,"middle skip works after a previous position drag");
+   Middle(app.Bar,0x209);Middle(app.Bar,0x208);check(app.Data.Active==null,"middle double-click does not start another phase");
+   app.Data.Active=rest;app.Engine.Signal();Mouse(app.Bar,"OnMouseDown",1);Mouse(app.Bar,"OnMouseUp",1);Middle(app.Bar);
+  }
   public static void Start(Program app,string folder){
    var report=new List<string>();int stage=0;var timer=new DispatcherTimer {Interval=TimeSpan.FromMilliseconds(Math.Max(900,Forms.SystemInformation.DoubleClickTime+200))};Action<bool,string> check=(ok,msg)=>{report.Add((ok?"PASS ":"FAIL ")+msg);if(!ok)Environment.ExitCode=1;};
    timer.Tick+=(s,e)=>{try{switch(stage++){
@@ -57,6 +88,12 @@ namespace LittleTomato {
      var focusScroll=Descendants(app.Main).OfType<System.Windows.Controls.ScrollViewer>().First(v=>Descendants(v).OfType<ProgressRing>().Any());check(focusScroll.ScrollableHeight>0,"compact window scrolls full focus card instead of clipping actions");focusScroll.ScrollToBottom();app.Main.UpdateLayout();Capture(app.Main,Path.Combine(folder,"11-compact-window.png"));
      check(Descendants(app.Main).OfType<System.Windows.Controls.Button>().Any(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="我的任务"&&b.Content is System.Windows.Controls.StackPanel),"navigation uses consistent vector icons and accessible labels");
      app.Main.Width=1020;app.Main.Height=750;app.Main.ShowPage("tasks");app.Main.UpdateLayout();Capture(app.Main,Path.Combine(folder,"12-final-light.png"));
+     CheckMiddleClick(app,check);break;
+    case 10:
+     check(app.Data.Active==null&&!app.Main.IsVisible&&!app.Mini.IsVisible,"middle skip cancels pending left click after double-click interval");
+     Mouse(app.Bar,"OnMouseDown",1);Mouse(app.Bar,"OnMouseUp",1);break;
+    case 11:
+     check(app.Data.Active!=null&&app.Data.Active.Kind=="focus"&&app.Data.Active.Running&&!app.Main.IsVisible,"left click starts next focus normally after middle skip");
      File.WriteAllLines(Path.Combine(folder,"ui-results.txt"),report,System.Text.Encoding.UTF8);timer.Stop();app.Exit();break;
    }}catch(Exception ex){Environment.ExitCode=1;report.Add("FAIL "+ex);File.WriteAllLines(Path.Combine(folder,"ui-results.txt"),report);timer.Stop();app.Exit();}};timer.Start();
   }

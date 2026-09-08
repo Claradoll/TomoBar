@@ -104,7 +104,7 @@ namespace LittleTomato {
   Program app; IntPtr taskbar; bool embedded; bool dragging; bool moved,suppressClick; Point down,origin; Forms.Timer clickTimer; Forms.ToolTip tip=new Forms.ToolTip(); string lastText="",lastTip=""; bool lastRest,lastRunning; float scale=1; int regionWidth,regionHeight;
   public string Mode {get{return embedded?"任务栏内嵌":"贴合任务栏";}}
   public bool Embedded {get{return embedded;}}
-  bool hovered;
+  bool hovered; ActiveTimer middleRest;
   public bool SurfaceExposed {get {if(!Visible)return false;Native.RECT r;Native.GetWindowRect(Handle,out r);return Native.WindowFromPoint(new Point(r.Left+r.Width/2,r.Top+r.Height/2))==Handle;}}
   protected override bool ShowWithoutActivation {get{return true;}}
   protected override Forms.CreateParams CreateParams {get {var p=base.CreateParams;p.ExStyle|=0x08000000|0x80;return p;}}
@@ -122,9 +122,23 @@ namespace LittleTomato {
   protected override void WndProc(ref Forms.Message m) { if(m.Msg==0x21){m.Result=new IntPtr(3);return;}base.WndProc(ref m); }
   protected override void OnMouseEnter(EventArgs e){base.OnMouseEnter(e);hovered=true;Invalidate();}
   protected override void OnMouseLeave(EventArgs e){base.OnMouseLeave(e);hovered=false;Invalidate();}
-  protected override void OnMouseDown(Forms.MouseEventArgs e) {base.OnMouseDown(e);if(e.Button!=Forms.MouseButtons.Left)return;down=Forms.Cursor.Position;Native.RECT r;Native.GetWindowRect(Handle,out r);origin=new Point(r.Left,r.Top);dragging=!app.Data.Settings.Locked;moved=false;if(dragging)Capture=true;}
+  protected override void OnMouseDown(Forms.MouseEventArgs e) {
+   base.OnMouseDown(e);
+   if(e.Button==Forms.MouseButtons.Middle){
+    // Bind the gesture to this rest so a phase change before release cannot skip a new phase.
+    clickTimer.Stop();var active=app.Data.Active;
+    middleRest=!dragging&&active!=null&&(active.Kind=="short"||active.Kind=="long")?active:null;return;
+   }
+   if(e.Button!=Forms.MouseButtons.Left)return;
+   middleRest=null;down=Forms.Cursor.Position;Native.RECT r;Native.GetWindowRect(Handle,out r);origin=new Point(r.Left,r.Top);dragging=!app.Data.Settings.Locked;moved=false;if(dragging)Capture=true;
+  }
   protected override void OnMouseMove(Forms.MouseEventArgs e) {base.OnMouseMove(e);if(!dragging || e.Button!=Forms.MouseButtons.Left)return;int dx=Forms.Cursor.Position.X-down.X;if(Math.Abs(dx)>4)moved=true;if(moved) {clickTimer.Stop();Native.RECT r;if(Native.GetWindowRect(taskbar,out r))app.Data.Settings.Offset=Math.Max(0,(int)((origin.X+dx-r.Left)/scale));RefreshPlacement();}}
-  protected override void OnMouseUp(Forms.MouseEventArgs e) {base.OnMouseUp(e);dragging=false;Capture=false;if(suppressClick){suppressClick=false;return;}if(moved){app.Save();return;}if(e.Button==Forms.MouseButtons.Left && e.Clicks<2){clickTimer.Stop();clickTimer.Start();}}
+  protected override void OnMouseUp(Forms.MouseEventArgs e) {
+   base.OnMouseUp(e);
+   if(e.Button==Forms.MouseButtons.Middle){var rest=middleRest;middleRest=null;if(rest!=null&&Object.ReferenceEquals(rest,app.Data.Active)&&ClientRectangle.Contains(e.Location))app.EndTimer();return;}
+   if(e.Button!=Forms.MouseButtons.Left)return;
+   dragging=false;Capture=false;if(suppressClick){suppressClick=false;return;}if(moved){app.Save();return;}if(e.Clicks<2){clickTimer.Stop();clickTimer.Start();}
+  }
   protected override void OnMouseDoubleClick(Forms.MouseEventArgs e) {base.OnMouseDoubleClick(e);if(e.Button==Forms.MouseButtons.Left){suppressClick=true;clickTimer.Stop();app.Mini.Open();}}
   public void Detach() {if(!IsHandleCreated)return;if(embedded){Native.SetParent(Handle,IntPtr.Zero);var st=Native.GetWindowLongPtr(Handle,-16).ToInt64();Native.SetWindowLongPtr(Handle,-16,new IntPtr((st&~0x40000000L)|0x80000000L));embedded=false;} }
   public void RefreshPlacement() {
@@ -161,7 +175,8 @@ namespace LittleTomato {
    if(txt!=lastText || rest!=lastRest || running!=lastRunning){lastText=txt;lastRest=rest;lastRunning=running;Invalidate();}
    string title=app.Engine.Current==null?"选择一项任务，开始专注":app.Engine.Current.Title;
    string status=app.Data.Active==null?"已停止 · 点击开始":running?"进行中 · "+app.Engine.Phase:"已暂停 · "+app.Engine.Phase;
-   string nextTip=title+"\n"+status+"\n单击"+(app.Data.Active==null?"开始":running?"暂停":"继续")+" · 双击打开小卡片";if(nextTip!=lastTip){tip.SetToolTip(this,nextTip);lastTip=nextTip;AccessibleName="小番茄计时条";}AccessibleDescription=status+" · "+txt;
+   string middleHint=rest?" · 中键跳过休息":"";
+   string nextTip=title+"\n"+status+"\n单击"+(app.Data.Active==null?"开始":running?"暂停":"继续")+" · 双击打开小卡片"+middleHint;if(nextTip!=lastTip){tip.SetToolTip(this,nextTip);lastTip=nextTip;AccessibleName="小番茄计时条";}AccessibleDescription=status+" · "+txt+middleHint;
   }
   protected override void OnPaint(Forms.PaintEventArgs e) {
    StripArt.Draw(e.Graphics,ClientSize,scale,lastText,app.Data.Active!=null,lastRunning,Native.SystemLight,hovered);
