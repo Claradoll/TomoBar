@@ -26,6 +26,7 @@ namespace LittleTomato {
  [DataContract] public class NoteBlock {
   [DataMember] public string Kind="body";
   [DataMember] public bool Done;
+  [DataMember(EmitDefaultValue=false)] public bool Checklist;
   [DataMember] public int Indent;
   [DataMember] public List<NoteRun> Runs=new List<NoteRun>();
  }
@@ -38,7 +39,7 @@ namespace LittleTomato {
   public static bool SafeLink(string value){Uri uri;return Uri.TryCreate(value,UriKind.Absolute,out uri)&&(uri.Scheme=="http"||uri.Scheme=="https");}
   public static NoteDocument Decode(string text){
    var doc=String.IsNullOrEmpty(text)?new NoteDocument():Store.Decode<NoteDocument>(text);
-   if(doc==null||doc.Version!=1||doc.Blocks==null||doc.Blocks.Count>10000)throw new InvalidDataException("便签内容格式无法识别，原始内容已保留。");
+   if(doc==null||(doc.Version!=1&&doc.Version!=2)||doc.Blocks==null||doc.Blocks.Count>10000)throw new InvalidDataException("便签内容格式无法识别，原始内容已保留。");
    foreach(var b in doc.Blocks){if(b==null||b.Runs==null||!new[]{"body","h1","h2","bullet","number","check"}.Contains(b.Kind))throw new InvalidDataException("便签段落格式无效，原始内容已保留。");b.Indent=Math.Max(0,Math.Min(6,b.Indent));foreach(var r in b.Runs){if(r==null)throw new InvalidDataException("便签文字格式无效。");r.Text=r.Text??"";if(!SafeLink(r.Link))r.Link=null;}}
    if(doc.Blocks.Count==0)doc.Blocks.Add(new NoteBlock());return doc;
   }

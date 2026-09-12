@@ -37,3 +37,5 @@ UI smoke 必须在有 Explorer 任务栏的 Windows 桌面运行，使用独立�
 `Notes.cs` 定义结构化内容、兼容迁移和窗口管理，`NoteEditor.cs` 使用原生 WPF RichTextBox 构造编辑器，`NotesPage.cs` 提供列表／搜索／回收站。便签与任务共用原子保存与备份。不要通过任意 XAML 加载便签内容。
 
 使用 `LittleTomato.exe --data-dir <隔离目录> --notes-smoke --background` 运行便签专项检查，生成 notes-results.txt 和界面预览。原有 `--ui-smoke` 覆盖番茄钟与中键交互。测试目录参数会隔离数据与启动登记。
+
+便签正文版本 1 继续兼容。编号／分点与待办组合时使用正文版本 2，`Checklist` 独立于段落 `Kind`；普通待办保留旧 `check` 表示。未知正文版本拒绝编辑但保留原文。WPF 的 `TextRange.Text` 会带入自动列表标记，选区与光标偏移应只统计可编辑字符。
