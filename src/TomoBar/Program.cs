@@ -17,8 +17,8 @@ using Forms=System.Windows.Forms;
 [assembly:AssemblyTitle("小番茄")]
 [assembly:AssemblyDescription("轻量的 Windows 任务与番茄钟")]
 [assembly:AssemblyProduct("小番茄")]
-[assembly:AssemblyVersion("1.5.0.0")]
-[assembly:AssemblyFileVersion("1.5.0.0")]
+[assembly:AssemblyVersion("1.5.1.0")]
+[assembly:AssemblyFileVersion("1.5.1.0")]
 namespace LittleTomato {
  public static class Launcher { [STAThread] public static int Main(string[] args) {System.Globalization.CultureInfo.DefaultThreadCurrentCulture=System.Globalization.CultureInfo.GetCultureInfo("zh-CN");System.Globalization.CultureInfo.DefaultThreadCurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("zh-CN");return Program.Start(args);} }
  public class Program {
@@ -81,8 +81,8 @@ namespace LittleTomato {
   void Log(Exception ex){try{File.AppendAllText(Path.Combine(folder,"error.log"),DateTime.Now+"\n"+ex+"\n");}catch{}}
   public void ShowMain(){if(Mini!=null)Mini.Hide();Main.Show();if(Main.WindowState==WindowState.Minimized)Main.WindowState=WindowState.Normal;Main.Activate();Native.SetForegroundWindow(new WindowInteropHelper(Main).Handle);Main.ModelChanged();}
   public void ToggleMini(){if(Mini.IsVisible)Mini.Hide();else Mini.Open();}
-  public void ToggleTimer(){bool wasRunning=Data.Active!=null&&Data.Active.Running;if(Data.Active==null)Engine.EnsureFocusTask();Engine.Toggle();if(!wasRunning)CollapseForFocus();}
-  public void StartTask(Todo task){Engine.Start(task);CollapseForFocus();}
+  public void ToggleTimer(){if(Main!=null)Main.ClearTaskPreview();bool wasRunning=Data.Active!=null&&Data.Active.Running;if(Data.Active==null)Engine.EnsureFocusTask();Engine.Toggle();if(!wasRunning)CollapseForFocus();}
+  public void StartTask(Todo task){if(Main!=null)Main.PreviewTask(task);Engine.Start(task);CollapseForFocus();}
   void CollapseForFocus(){if(Data.Active==null||!Data.Active.Running||Data.Active.Kind!="focus")return;Main.CloseEditor();Mini.Hide();Main.Hide();if(Bar!=null)Bar.RefreshPlacement();}
   public void EndTimer(){if(Data.Active==null)return;Engine.End();}
   public void ShowTrayHint(){if(shownHint||tray==null)return;shownHint=true;tray.ShowBalloonTip(2500,"小番茄仍在运行","从任务栏计时条或托盘图标随时回来。",Forms.ToolTipIcon.None);}

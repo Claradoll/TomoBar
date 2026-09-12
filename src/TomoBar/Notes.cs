@@ -15,7 +15,7 @@ namespace LittleTomato {
   [DataMember] public string Color="paper";
   [DataMember] public bool Pinned,Deleted;
   [DataMember] public long Updated=DateTime.UtcNow.Ticks;
-  [DataMember] public double Width=520,Height=620;
+  [DataMember] public double Width=380,Height=440;
   public string DisplayTitle {get {var value=String.IsNullOrWhiteSpace(Title)?(PlainText??"").Split('\n').FirstOrDefault(s=>!String.IsNullOrWhiteSpace(s)):Title;return String.IsNullOrWhiteSpace(value)?"未命名便签":value.Trim().Substring(0,Math.Min(value.Trim().Length,80));}}
  }
  [DataContract] public class NoteRun {
@@ -44,7 +44,7 @@ namespace LittleTomato {
   }
   public static void Normalize(AppData data){
    if(data.Notes==null)data.Notes=new List<Note>();var ids=new HashSet<string>();
-   foreach(var n in data.Notes){if(n==null||String.IsNullOrEmpty(n.Id)||!ids.Add(n.Id))throw new InvalidDataException("便签标识无效。");n.Title=n.Title??"";n.PlainText=n.PlainText??"";n.Body=n.Body??"";if(!new[]{"paper","sage","rose"}.Contains(n.Color))n.Color="paper";if(n.Updated<TimeSpan.TicksPerDay||n.Updated>DateTime.MaxValue.Ticks-TimeSpan.TicksPerDay)n.Updated=DateTime.UtcNow.Ticks;n.Width=Double.IsNaN(n.Width)||Double.IsInfinity(n.Width)?520:Math.Max(400,Math.Min(1400,n.Width));n.Height=Double.IsNaN(n.Height)||Double.IsInfinity(n.Height)?620:Math.Max(380,Math.Min(1200,n.Height));}
+   foreach(var n in data.Notes){if(n==null||String.IsNullOrEmpty(n.Id)||!ids.Add(n.Id))throw new InvalidDataException("便签标识无效。");n.Title=n.Title??"";n.PlainText=n.PlainText??"";n.Body=n.Body??"";if(!new[]{"paper","sage","rose"}.Contains(n.Color))n.Color="paper";if(n.Updated<TimeSpan.TicksPerDay||n.Updated>DateTime.MaxValue.Ticks-TimeSpan.TicksPerDay)n.Updated=DateTime.UtcNow.Ticks;n.Width=Double.IsNaN(n.Width)||Double.IsInfinity(n.Width)?380:Math.Max(280,Math.Min(1400,n.Width));n.Height=Double.IsNaN(n.Height)||Double.IsInfinity(n.Height)?440:Math.Max(240,Math.Min(1200,n.Height));}
   }
  }
  public class NoteManager {
