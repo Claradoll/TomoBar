@@ -31,3 +31,9 @@ UI smoke 必须在有 Explorer 任务栏的 Windows 桌面运行，使用独立�
 自启登记仅修改 HKCU `Software\Microsoft\Windows\CurrentVersion\Run` 下的 `LittleTomato` 值，命令为引用的 exe 路径加 `--background`。不会导入／导出到任务备份中。参考 [Microsoft Run / RunOnce 文档](https://learn.microsoft.com/en-us/windows/win32/setupapi/run-and-runonce-registry-keys)。
 
 发布包只包含程序和文档，不得包含 `data`、用户绝对路径、诊断日志或测试样例。更新版本时同步程序集版本、更新记录和 Release 说明。`main` 上构建成功的新版本会自动生成 Release；已发布同名版本不会被自动覆盖。
+
+## 便签实现
+
+`Notes.cs` 定义结构化内容、兼容迁移和窗口管理，`NoteEditor.cs` 使用原生 WPF RichTextBox 构造编辑器，`NotesPage.cs` 提供列表／搜索／回收站。便签与任务共用原子保存与备份。不要通过任意 XAML 加载便签内容。
+
+使用 `LittleTomato.exe --data-dir <隔离目录> --notes-smoke --background` 运行便签专项检查，生成 notes-results.txt 和界面预览。原有 `--ui-smoke` 覆盖番茄钟与中键交互。测试目录参数会隔离数据与启动登记。

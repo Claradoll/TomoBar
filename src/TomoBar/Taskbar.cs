@@ -116,7 +116,7 @@ namespace LittleTomato {
    var menu=new Forms.ContextMenuStrip();menu.Items.Add("打开主界面",null,(s,e)=>app.ShowMain());menu.Items.Add("暂停 / 继续",null,(s,e)=>app.ToggleTimer());menu.Items.Add(new Forms.ToolStripSeparator());
    var locked=new Forms.ToolStripMenuItem("锁定位置");locked.Click+=(s,e)=>{app.Data.Settings.Locked=!app.Data.Settings.Locked;app.Save();};menu.Items.Add(locked);
    menu.Items.Add("恢复默认位置",null,(s,e)=>{app.Data.Settings.Offset=-1;app.Save();RefreshPlacement();});
-   menu.Items.Add("设置",null,(s,e)=>{app.ShowMain();app.Main.ShowPage("settings");});menu.Items.Add(new Forms.ToolStripSeparator());menu.Items.Add("退出小番茄",null,(s,e)=>app.Exit());
+   menu.Items.Add("新建便签",null,(s,e)=>app.Notes.New());menu.Items.Add("便签列表",null,(s,e)=>{app.ShowMain();app.Main.ShowPage("notes");});menu.Items.Add("设置",null,(s,e)=>{app.ShowMain();app.Main.ShowPage("settings");});menu.Items.Add(new Forms.ToolStripSeparator());menu.Items.Add("退出小番茄",null,(s,e)=>app.Exit());
    menu.Opening+=(s,e)=>{clickTimer.Stop();locked.Checked=app.Data.Settings.Locked;};ContextMenuStrip=menu;
   }
   protected override void WndProc(ref Forms.Message m) { if(m.Msg==0x21){m.Result=new IntPtr(3);return;}base.WndProc(ref m); }

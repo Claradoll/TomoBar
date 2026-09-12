@@ -34,6 +34,7 @@ namespace LittleTomato {
   [DataMember] public int LongBreak = 15;
   [DataMember] public int Rounds = 4;
   [DataMember] public string Theme = "system";
+  [DataMember] public string NoteShortcut = "N";
   [DataMember] public bool Sound = true;
   [DataMember] public bool Notifications = true;
   [DataMember] public bool PauseOnLock = true;
@@ -55,6 +56,7 @@ namespace LittleTomato {
  [DataContract] public class AppData {
   [DataMember] public int Version = 1;
   [DataMember] public List<Todo> Tasks = new List<Todo>();
+  [DataMember] public List<Note> Notes = new List<Note>();
   [DataMember] public List<Session> Sessions = new List<Session>();
   [DataMember] public Preferences Settings = new Preferences();
   [DataMember] public ActiveTimer Active;
@@ -89,7 +91,9 @@ namespace LittleTomato {
   }
   public static AppData Normalize(AppData d) {
    if(d==null || d.Version!=1 || d.Tasks==null || d.Sessions==null || d.Settings==null) throw new InvalidDataException("不支持的数据格式");
+   NoteCodec.Normalize(d);
    var p=d.Settings;
+   if(p.NoteShortcut!="N"&&p.NoteShortcut!="M"&&p.NoteShortcut!="off")p.NoteShortcut="N";
    p.Focus=Math.Max(1,Math.Min(180,p.Focus)); p.ShortBreak=Math.Max(1,Math.Min(60,p.ShortBreak)); p.LongBreak=Math.Max(1,Math.Min(120,p.LongBreak)); p.Rounds=Math.Max(1,Math.Min(12,p.Rounds));
    p.Offset=Math.Max(-1,p.Offset);
    if(p.Theme!="light" && p.Theme!="dark") p.Theme="system";
