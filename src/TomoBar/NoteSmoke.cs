@@ -55,6 +55,38 @@ namespace LittleTomato {
   static Button NamedButton(DependencyObject root,string name){return Children(root).OfType<Button>().First(b=>System.Windows.Automation.AutomationProperties.GetName(b)==name);}
   static TextBox EditTitle(Program app,Note note){NamedButton(app.Main,"编辑便签标题 "+note.Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));return Children(app.Main).OfType<TextBox>().First(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="便签标题 "+note.Id);}
   static void TitleKey(NoteWindow w,TextBox editor,Key key){editor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(w),0,key){RoutedEvent=Keyboard.PreviewKeyDownEvent});}
+  static Native.RECT MoveProposal(IntPtr handle,Native.RECT proposed){
+   var memory=System.Runtime.InteropServices.Marshal.AllocHGlobal(System.Runtime.InteropServices.Marshal.SizeOf(typeof(Native.RECT)));
+   try{System.Runtime.InteropServices.Marshal.StructureToPtr(proposed,memory,false);SendMessage(handle,0x216,IntPtr.Zero,memory);return (Native.RECT)System.Runtime.InteropServices.Marshal.PtrToStructure(memory,typeof(Native.RECT));}finally{System.Runtime.InteropServices.Marshal.FreeHGlobal(memory);}
+  }
+  static void CheckDockDrag(NoteWindow w,Action<bool,string> check){
+   var handle=new System.Windows.Interop.WindowInteropHelper(w).Handle;Native.RECT original;Native.GetWindowRect(handle,out original);var work=NoteDocking.WorkArea(original);int width=original.Width,height=original.Height;
+   Native.SetWindowPos(handle,IntPtr.Zero,work.Right-width-5,work.Top+80,0,0,0x1|0x4|0x10);Native.RECT near;Native.GetWindowRect(handle,out near);
+   SendMessage(handle,0x231,IntPtr.Zero,IntPtr.Zero);var proposal=MoveProposal(handle,near);
+   check(proposal.Left==near.Left&&proposal.Right==near.Right,"dragging near edge leaves native movement proposal unchanged");SendMessage(handle,0x232,IntPtr.Zero,IntPtr.Zero);Native.RECT snapped;Native.GetWindowRect(handle,out snapped);
+   check(snapped.Right==work.Right&&snapped.Width==width,"releasing a moved note near edge snaps without resizing");
+   foreach(bool folded in new[]{false,true}){
+    if(folded)w.ToggleFold();Native.RECT size;Native.GetWindowRect(handle,out size);
+    foreach(string edge in new[]{"left","right","top","bottom"}){
+     int x=edge=="left"?work.Left:edge=="right"?work.Right-size.Width:work.Left+(work.Width-size.Width)/2;
+     int y=edge=="top"?work.Top:edge=="bottom"?work.Bottom-size.Height:work.Top+(work.Height-size.Height)/2;
+     Native.SetWindowPos(handle,IntPtr.Zero,x,y,0,0,0x1|0x4|0x10);SendMessage(handle,0x231,IntPtr.Zero,IntPtr.Zero);
+     // Model Windows feedback: every new proposal starts at the current window
+     // position plus a small pointer movement, not one large precomputed jump.
+     for(int step=0;step<20;step++){
+      Native.RECT current;Native.GetWindowRect(handle,out current);int dx=edge=="left"?3:edge=="right"?-3:0,dy=edge=="top"?3:edge=="bottom"?-3:0;
+      current.Left+=dx;current.Right+=dx;current.Top+=dy;current.Bottom+=dy;var next=MoveProposal(handle,current);Native.SetWindowPos(handle,IntPtr.Zero,next.Left,next.Top,0,0,0x1|0x4|0x10);
+     }
+     SendMessage(handle,0x232,IntPtr.Zero,IntPtr.Zero);Native.RECT released;Native.GetWindowRect(handle,out released);
+     int distance=edge=="left"?released.Left-work.Left:edge=="right"?work.Right-released.Right:edge=="top"?released.Top-work.Top:work.Bottom-released.Bottom;
+     check(distance==60&&released.Width==size.Width&&released.Height==size.Height,(folded?"folded":"expanded")+" note slowly drags away from "+edge+" edge without snapping back");
+    }
+    if(folded)w.ToggleFold();
+   }
+   Native.SetWindowPos(handle,IntPtr.Zero,work.Left+5,work.Top+80,0,0,0x1|0x4|0x10);SendMessage(handle,0x231,IntPtr.Zero,IntPtr.Zero);SendMessage(handle,0x232,IntPtr.Zero,IntPtr.Zero);Native.RECT untouched;Native.GetWindowRect(handle,out untouched);
+   check(untouched.Left==work.Left+5,"resize-only loop does not trigger snap from previous drag");
+   Native.SetWindowPos(handle,IntPtr.Zero,original.Left,original.Top,0,0,0x1|0x4|0x10);
+  }
   static NoteWindow CheckNoteWindow(Program app,NoteWindow w,Action<bool,string> check,string folder){
    var note=w.Note;app.ShowMain();app.Main.ShowPage("notes");app.Main.UpdateLayout();var editor=EditTitle(app,note);editor.Text="读书与灵感";
    check(editor.IsVisible&&w.IsVisible,"single click on list title opens inline editor without replacing note window");
@@ -71,8 +103,7 @@ namespace LittleTomato {
    NamedButton(w,"置顶便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(w.Topmost&&note.Pinned,"pin button remains usable while folded");
    SendMessage(handle,0xA3,new IntPtr(2),IntPtr.Zero);w.UpdateLayout();check(!w.IsFolded&&w.Editor.Visibility==Visibility.Visible&&Math.Abs(w.ActualHeight-height)<2&&note.Body==body,"second titlebar double-click restores original editor size and content");
    SendMessage(handle,0x112,new IntPtr(0xF030),IntPtr.Zero);check(w.WindowState!=WindowState.Maximized,"system maximize command is suppressed for notes");
-   Native.RECT rect;Native.GetWindowRect(handle,out rect);var work=NoteDocking.WorkArea(rect);int rectWidth=rect.Width;rect.Left=work.Right-rectWidth-5;rect.Right=work.Right-5;rect.Top=work.Top+80;rect.Bottom=rect.Top+200;
-   var memory=System.Runtime.InteropServices.Marshal.AllocHGlobal(System.Runtime.InteropServices.Marshal.SizeOf(typeof(Native.RECT)));try{System.Runtime.InteropServices.Marshal.StructureToPtr(rect,memory,false);SendMessage(handle,0x216,IntPtr.Zero,memory);rect=(Native.RECT)System.Runtime.InteropServices.Marshal.PtrToStructure(memory,typeof(Native.RECT));check(rect.Right==work.Right&&rect.Width==rectWidth,"native moving message snaps to current monitor work-area edge without resizing");}finally{System.Runtime.InteropServices.Marshal.FreeHGlobal(memory);}
+   CheckDockDrag(w,check);
    w.Editor.AppendText("关窗前的新内容");SendMessage(handle,0xA3,new IntPtr(2),IntPtr.Zero);NamedButton(w,"关闭便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(!w.IsVisible&&app.Store.Load().Notes.First(n=>n.Id==note.Id).PlainText.Contains("关窗前的新内容")&&!note.Deleted,"close button on folded note saves content and keeps note in list");
    w=app.Notes.Open(note);check(!w.IsFolded&&Math.Abs(w.Height-height)<2&&w.Topmost&&w.Title.Contains("读书与灵感"),"reopening closed note restores expanded size, saved title and pin state");
    NamedButton(w,"最小化便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(w.WindowState==WindowState.Minimized,"header minimize button minimizes note");app.Notes.Open(note);check(w.WindowState==WindowState.Normal&&w.IsVisible,"opening from list restores minimized note");

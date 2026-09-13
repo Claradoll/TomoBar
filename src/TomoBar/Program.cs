@@ -17,8 +17,8 @@ using Forms=System.Windows.Forms;
 [assembly:AssemblyTitle("小番茄")]
 [assembly:AssemblyDescription("轻量的 Windows 任务与番茄钟")]
 [assembly:AssemblyProduct("小番茄")]
-[assembly:AssemblyVersion("1.5.4.0")]
-[assembly:AssemblyFileVersion("1.5.4.0")]
+[assembly:AssemblyVersion("1.5.5.0")]
+[assembly:AssemblyFileVersion("1.5.5.0")]
 namespace LittleTomato {
  public static class Launcher { [STAThread] public static int Main(string[] args) {System.Globalization.CultureInfo.DefaultThreadCurrentCulture=System.Globalization.CultureInfo.GetCultureInfo("zh-CN");System.Globalization.CultureInfo.DefaultThreadCurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("zh-CN");return Program.Start(args);} }
  public class Program {

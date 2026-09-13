@@ -21,7 +21,7 @@ namespace LittleTomato {
   }
  }
  public partial class NoteWindow {
-  TextBlock headerTitle;Button headerPin;bool resizingFold;double expandedHeight;
+  TextBlock headerTitle;Button headerPin;bool resizingFold;double expandedHeight;bool inMoveSize,noteMoved;
   public bool IsFolded {get;private set;}
   Grid BuildNoteHeader(){
    var header=UI.Columns(-1,34,34,34);header.Height=36;header.Margin=new Thickness(14,0,4,0);
@@ -52,7 +52,11 @@ namespace LittleTomato {
    if(message==0xA3&&wp.ToInt32()==2){ToggleFold();handled=true;return IntPtr.Zero;}
    // Avoid maximizing via the system menu or Windows titlebar gestures.
    if(message==0x112&&(wp.ToInt64()&0xFFF0)==0xF030){handled=true;return IntPtr.Zero;}
-   if(message==0x216&&lp!=IntPtr.Zero){var rect=(Native.RECT)Marshal.PtrToStructure(lp,typeof(Native.RECT));rect=NoteDocking.Snap(rect,NoteDocking.WorkArea(rect),(int)Math.Round(12*Math.Max(1,Native.GetDpiForWindow(handle)/96.0)));Marshal.StructureToPtr(rect,lp,false);handled=true;return new IntPtr(1);}
+   if(message==0x231){inMoveSize=true;noteMoved=false;}
+   // Do not rewrite WM_MOVING: Windows can feed the adjusted rectangle into the
+   // next small movement, repeatedly cancelling the user's drag away from an edge.
+   if(message==0x216&&inMoveSize)noteMoved=true;
+   if(message==0x232){bool snap=inMoveSize&&noteMoved;inMoveSize=false;noteMoved=false;if(snap){Native.RECT rect;if(Native.GetWindowRect(handle,out rect)){var target=NoteDocking.Snap(rect,NoteDocking.WorkArea(rect),(int)Math.Round(12*Math.Max(1,Native.GetDpiForWindow(handle)/96.0)));if(target.Left!=rect.Left||target.Top!=rect.Top)Native.SetWindowPos(handle,IntPtr.Zero,target.Left,target.Top,0,0,0x1|0x4|0x10);}}}
    return IntPtr.Zero;
   }
  }
