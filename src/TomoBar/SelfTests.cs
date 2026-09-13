@@ -4,7 +4,7 @@ using System.Linq;
 using System.Collections.Generic;
 namespace LittleTomato {
  public class FakeClock : ITimerClock {public double Value;public DateTime Now=new DateTime(2026,9,7,2,0,0,DateTimeKind.Utc);public double Seconds{get{return Value;}}public DateTime UtcNow{get{return Now;}}public void Add(double s){Value+=s;Now=Now.AddSeconds(s);}}
- public static class SelfTests {
+ public static partial class SelfTests {
   static List<string> report=new List<string>();static int passed,failed;
   static void Assert(bool condition,string name){if(!condition)throw new Exception(name);}
   static void Close(double a,double b,string msg){Assert(Math.Abs(a-b)<.02,msg+": "+a+" != "+b);}
@@ -12,6 +12,7 @@ namespace LittleTomato {
   static void Advance(Engine e,FakeClock c,int seconds){for(int i=0;i<seconds;i++){c.Add(1);e.Tick();}}
   static void Test(string name,Action a){try{a();passed++;report.Add("PASS "+name);}catch(Exception ex){failed++;report.Add("FAIL "+name+" :: "+ex.Message);}}
   public static int Run(string output){
+   GroupTests();
    Test("旧版本数据缺少便签仍可无损升级",()=>{var old=new AppData();old.Tasks.Add(new Todo{Title="保留任务"});string json=System.Text.RegularExpressions.Regex.Replace(Store.Encode(old),"\"Notes\":\\[\\],?","");var loaded=Store.Normalize(Store.Decode<AppData>(json));Assert(loaded.Notes!=null&&loaded.Notes.Count==0&&loaded.Tasks[0].Title=="保留任务","notes initialized without touching tasks");});
    Test("便签格式与勾选可序列化并恢复",()=>{var doc=new NoteDocument();doc.Blocks.Add(new NoteBlock{Kind="check",Done=true,Runs=new List<NoteRun>{new NoteRun{Text="测试便签",Bold=true,Italic=true,Strike=true,Highlight=true,Underline=true,Link="https://example.com"}}});var copy=NoteCodec.Decode(Store.Encode(doc));Assert(copy.Blocks[0].Done&&copy.Blocks[0].Runs[0].Bold&&copy.Blocks[0].Runs[0].Strike&&copy.Blocks[0].Runs[0].Highlight&&copy.PlainText=="测试便签","rich content preserved");});
    Test("编号待办组合及完成状态无损序列化",()=>{var doc=new NoteDocument{Version=2};doc.Blocks.Add(new NoteBlock{Kind="number",Checklist=true,Done=true,Indent=2,Runs=new List<NoteRun>{new NoteRun{Text="组合待办",Bold=true}}});var copy=NoteCodec.Decode(Store.Encode(doc));Assert(copy.Version==2&&copy.Blocks[0].Kind=="number"&&copy.Blocks[0].Checklist&&copy.Blocks[0].Done&&copy.Blocks[0].Indent==2&&copy.Blocks[0].Runs[0].Bold,"combined structure round trip");});

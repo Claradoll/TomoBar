@@ -17,8 +17,8 @@ using Forms=System.Windows.Forms;
 [assembly:AssemblyTitle("小番茄")]
 [assembly:AssemblyDescription("轻量的 Windows 任务与番茄钟")]
 [assembly:AssemblyProduct("小番茄")]
-[assembly:AssemblyVersion("1.5.6.0")]
-[assembly:AssemblyFileVersion("1.5.6.0")]
+[assembly:AssemblyVersion("1.6.0.0")]
+[assembly:AssemblyFileVersion("1.6.0.0")]
 namespace LittleTomato {
  public static class Launcher { [STAThread] public static int Main(string[] args) {System.Globalization.CultureInfo.DefaultThreadCurrentCulture=System.Globalization.CultureInfo.GetCultureInfo("zh-CN");System.Globalization.CultureInfo.DefaultThreadCurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("zh-CN");return Program.Start(args);} }
  public class Program {
@@ -75,14 +75,14 @@ namespace LittleTomato {
   void SessionChanged(object s,SessionSwitchEventArgs e){if(e.Reason==SessionSwitchReason.SessionLock&&Data.Settings.PauseOnLock)Dispatch(()=>Engine.Pause());}
   void ThemeChanged(object s,UserPreferenceChangedEventArgs e){Dispatch(()=>{ApplyTheme();if(Bar!=null)Bar.Invalidate();});}
   void DisplayChanged(object s,EventArgs e){Dispatch(()=>Bar.RefreshPlacement());}
-  void OnChanged(){Save();if(Main!=null)Main.ModelChanged();if(Mini!=null)Mini.Refresh();if(Bar!=null)Bar.RefreshPlacement();}
+  void OnChanged(){if(Notes!=null)Notes.RefreshLinkedDocuments();Save();if(Main!=null)Main.ModelChanged();if(Mini!=null)Mini.Refresh();if(Bar!=null)Bar.RefreshPlacement();}
   public static string SaveFailureMessage(Exception ex){if(ex is System.Runtime.Serialization.SerializationException)return "程序无法转换部分数据，尚未写入本次更改。现有文件未被覆盖。\n"+ex.Message;if(ex is IOException||ex is UnauthorizedAccessException)return "暂时无法写入数据文件，请检查目录权限或磁盘空间。\n"+ex.Message;return "程序保存数据时发生错误，尚未写入本次更改。\n"+ex.Message;}
   public bool Save(){if(saveInProgress)return false;saveInProgress=true;try{Store.Save(Data);savedAt=DateTime.UtcNow;savingError=false;return true;}catch(Exception ex){savedAt=DateTime.UtcNow;if(!savingError){savingError=true;Log(ex);MessageBox.Show(Main,SaveFailureMessage(ex),"保存失败",MessageBoxButton.OK,MessageBoxImage.Warning);}return false;}finally{saveInProgress=false;}}
   void Log(Exception ex){try{File.AppendAllText(Path.Combine(folder,"error.log"),DateTime.Now+"\n"+ex+"\n");}catch{}}
   public void ShowMain(){if(Mini!=null)Mini.Hide();Main.Show();if(Main.WindowState==WindowState.Minimized)Main.WindowState=WindowState.Normal;Main.Activate();Native.SetForegroundWindow(new WindowInteropHelper(Main).Handle);Main.ModelChanged();}
   public void ToggleMini(){if(Mini.IsVisible)Mini.Hide();else Mini.Open();}
   public void ToggleTimer(){if(Main!=null)Main.ClearTaskPreview();bool wasRunning=Data.Active!=null&&Data.Active.Running;if(Data.Active==null)Engine.EnsureFocusTask();Engine.Toggle();if(!wasRunning)CollapseForFocus();}
-  public void StartTask(Todo task){if(Main!=null)Main.PreviewTask(task);Engine.Start(task);CollapseForFocus();}
+  public void StartTask(Todo task){if(task!=null&&task.IsGroup)task=NoteTasks.Next(Data,task);if(task==null||task.Done||task.Archived)return;if(Main!=null)Main.PreviewTask(task);Engine.Start(task);CollapseForFocus();}
   void CollapseForFocus(){if(Data.Active==null||!Data.Active.Running||Data.Active.Kind!="focus")return;Main.CloseEditor();Mini.Hide();Main.Hide();if(Bar!=null)Bar.RefreshPlacement();}
   public void EndTimer(){if(Data.Active==null)return;Engine.End();}
   public void ShowTrayHint(){if(shownHint||tray==null)return;shownHint=true;tray.ShowBalloonTip(2500,"小番茄仍在运行","从任务栏计时条或托盘图标随时回来。",Forms.ToolTipIcon.None);}

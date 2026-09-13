@@ -12,6 +12,7 @@ namespace LittleTomato {
   [DataMember] public string PlainText="";
   [DataMember] public string Body="";
   [DataMember] public string TaskId;
+  [DataMember(EmitDefaultValue=false)] public string GroupId;
   [DataMember] public string Color="paper";
   [DataMember] public bool Pinned,Deleted;
   [DataMember] public long Updated=DateTime.UtcNow.Ticks;
@@ -24,6 +25,7 @@ namespace LittleTomato {
   [DataMember] public string Link;
  }
  [DataContract] public class NoteBlock {
+  [DataMember(EmitDefaultValue=false)] public string Id=Guid.NewGuid().ToString("N");
   [DataMember] public string Kind="body";
   [DataMember] public bool Done;
   [DataMember(EmitDefaultValue=false)] public bool Checklist;
@@ -41,7 +43,7 @@ namespace LittleTomato {
    var doc=String.IsNullOrEmpty(text)?new NoteDocument():Store.Decode<NoteDocument>(text);
    if(doc==null||(doc.Version!=1&&doc.Version!=2)||doc.Blocks==null||doc.Blocks.Count>10000)throw new InvalidDataException("便签内容格式无法识别，原始内容已保留。");
    foreach(var b in doc.Blocks){if(b==null||b.Runs==null||!new[]{"body","h1","h2","bullet","number","check"}.Contains(b.Kind))throw new InvalidDataException("便签段落格式无效，原始内容已保留。");b.Indent=Math.Max(0,Math.Min(6,b.Indent));foreach(var r in b.Runs){if(r==null)throw new InvalidDataException("便签文字格式无效。");r.Text=r.Text??"";if(!SafeLink(r.Link))r.Link=null;}}
-   if(doc.Blocks.Count==0)doc.Blocks.Add(new NoteBlock());return doc;
+   if(doc.Blocks.Count==0)doc.Blocks.Add(new NoteBlock());var ids=new HashSet<string>();foreach(var b in doc.Blocks)if(String.IsNullOrEmpty(b.Id)||!ids.Add(b.Id)){b.Id=Guid.NewGuid().ToString("N");ids.Add(b.Id);}return doc;
   }
   public static void Normalize(AppData data){
    if(data.Notes==null)data.Notes=new List<Note>();var ids=new HashSet<string>();
@@ -57,7 +59,12 @@ namespace LittleTomato {
    try{var doc=NoteCodec.Decode(n.Body);window=new NoteWindow(app,n,doc);windows[n.Id]=window;window.Closed+=(s,e)=>{windows.Remove(n.Id);Changed();};window.Show();window.Activate();return window;}
    catch(Exception ex){UI.Notice(app.Main,"便签未能打开，原始内容未被覆盖。\n"+ex.Message);return null;}
   }
-  public bool Rename(Note note,string value){string previous=note.Title;long updated=note.Updated;note.Title=(value??"").Trim();note.Updated=DateTime.UtcNow.Ticks;if(!app.Save()){note.Title=previous;note.Updated=updated;return false;}NoteWindow window;if(windows.TryGetValue(note.Id,out window))window.RefreshHeader();Changed();return true;}
+  public bool Rename(Note note,string value){string previous=note.Title;long updated=note.Updated;note.Title=(value??"").Trim();note.Updated=DateTime.UtcNow.Ticks;if(!app.Save()){note.Title=previous;note.Updated=updated;return false;}NoteWindow window;if(windows.TryGetValue(note.Id,out window))window.RefreshHeader();var group=NoteTasks.Group(app.Data,note);if(group!=null){group.Title=note.DisplayTitle;app.Engine.Signal();}Changed();return true;}
+  bool syncing;
+  public void SyncContent(Note note,NoteDocument doc){if(syncing)return;syncing=true;try{if(NoteTasks.SyncExisting(app.Engine,note,doc))app.Engine.Signal();}finally{syncing=false;}}
+  public void RefreshLinkedDocuments(){foreach(var w in windows.Values.ToArray())w.ReloadLinkedContent();}
+  public void ToGroup(Note note,NoteDocument doc){SyncContent(note,doc);var group=NoteTasks.Convert(app.Data,note,doc);if(group==null)return;NoteWindow window;if(windows.TryGetValue(note.Id,out window))window.ReloadLinkedContent();app.Engine.Signal();ShowGroup(note);Changed();}
+  public void ShowGroup(Note note){var group=NoteTasks.Group(app.Data,note);if(group==null)return;app.ShowMain();app.Main.OpenTaskGroup(group);}
   public void RefreshTheme(){foreach(var w in windows.Values)w.RefreshTheme();}
   public void Changed(){if(app.Main!=null)app.Main.RefreshNoteList();}
   public bool Flush(){foreach(var w in windows.Values.ToArray())if(!w.Flush())return false;return true;}
@@ -65,7 +72,7 @@ namespace LittleTomato {
   public void Delete(Note note){NoteWindow w;if(windows.TryGetValue(note.Id,out w)){w.Close();if(windows.ContainsKey(note.Id))return;}note.Deleted=true;if(!app.Save()){note.Deleted=false;return;}Changed();}
   public void Restore(Note note){note.Deleted=false;if(!app.Save())note.Deleted=true;Changed();}
   public void ToTask(Note note){
-   var existing=app.Data.Tasks.FirstOrDefault(t=>t.Id==note.TaskId);
+   if(NoteTasks.Group(app.Data,note)!=null){ShowGroup(note);return;}var existing=app.Data.Tasks.FirstOrDefault(t=>t.Id==note.TaskId);
    if(existing==null){existing=new Todo{Title=note.DisplayTitle,Minutes=app.Data.Settings.Focus,Planned=app.Data.Settings.Rounds};app.Data.Tasks.Add(existing);note.TaskId=existing.Id;}
    app.Engine.Signal();app.ShowMain();app.Main.ShowPage("tasks");Changed();
   }

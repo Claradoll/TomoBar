@@ -12,7 +12,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace LittleTomato {
- public static class NoteSmoke {
+ public static partial class NoteSmoke {
   static void Capture(FrameworkElement w,string path){w.UpdateLayout();var bmp=new RenderTargetBitmap((int)w.ActualWidth,(int)w.ActualHeight,96,96,PixelFormats.Pbgra32);bmp.Render(w);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bmp));using(var f=File.Create(path))encoder.Save(f);}
   static IEnumerable<DependencyObject> Children(DependencyObject root){for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){var c=VisualTreeHelper.GetChild(root,i);yield return c;foreach(var v in Children(c))yield return v;}}
   static void Enter(NoteWindow w){w.UpdateLayout();w.Editor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(w),0,Key.Enter){RoutedEvent=Keyboard.PreviewKeyDownEvent});}
@@ -163,6 +163,7 @@ w.Width=280;w.Height=240;w.UpdateLayout();check(w.Editor.ActualHeight>=40,"compa
      app.Main.ShowPage("notes");var search=Children(app.Main).OfType<TextBox>().First(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="搜索便签");search.Text="不存在的测试词";app.Main.UpdateLayout();check(!Children(app.Main).OfType<Button>().Any(b=>(System.Windows.Automation.AutomationProperties.GetName(b)??"").StartsWith("打开便签 ")),"note search filters unmatched content");search.Text="灵感";app.Main.UpdateLayout();check(Children(app.Main).OfType<Button>().Any(b=>(System.Windows.Automation.AutomationProperties.GetName(b)??"").StartsWith("打开便签 ")),"note search finds body text");
      var restored=Store.Normalize(Store.Decode<AppData>(Store.Encode(app.Data)));check(restored.Notes[0].Body==note.Body&&NoteCodec.Decode(restored.Notes[0].Body).Blocks.Any(b=>b.Done),"backup round trip preserves rich text and checklist");
      w=app.Notes.Open(note);w.Editor.AppendText("\n退出前的最后一笔");check(app.Notes.Flush()&&app.Store.Load().Notes[0].PlainText.Contains("退出前的最后一笔"),"exit flush preserves final unsaved keystrokes");w.Close();
+     CheckGroups(app,check,folder);
      File.WriteAllLines(Path.Combine(folder,"notes-results.txt"),report,System.Text.Encoding.UTF8);timer.Stop();app.Exit();break;
    }}catch(Exception ex){Environment.ExitCode=1;report.Add("FAIL "+ex);File.WriteAllLines(Path.Combine(folder,"notes-results.txt"),report);timer.Stop();app.Exit();}};timer.Start();
   }

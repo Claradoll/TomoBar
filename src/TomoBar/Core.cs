@@ -15,6 +15,9 @@ namespace LittleTomato {
   [DataMember] public int Planned = 4;
   [DataMember] public bool Done;
   [DataMember] public bool Archived;
+  [DataMember(EmitDefaultValue=false)] public string ParentId,SourceNoteId,SourceBlockId;
+  [DataMember(EmitDefaultValue=false)] public bool IsGroup;
+  [DataMember(EmitDefaultValue=false)] public int NoteOrder;
  }
  [DataContract] public class Session {
   [DataMember] public string Id = Guid.NewGuid().ToString("N");
@@ -124,7 +127,7 @@ namespace LittleTomato {
   public event Action Changed;
   public event Action<string> Finished;
   public Engine(AppData data,ITimerClock source) { Data=data;clock=source;Store.RepairTimestamps(Data,clock.UtcNow);last=clock.Seconds; if(Data.Active!=null) Data.Active.Running=false; }
-  public Todo Selected { get { return Data.Tasks.FirstOrDefault(t=>t.Id==Data.Selected && !t.Archived && !t.Done); } }
+  public Todo Selected { get { return Data.Tasks.FirstOrDefault(t=>t.Id==Data.Selected && !t.Archived && !t.Done && !t.IsGroup); } }
   public Todo Current { get { return Data.Active==null ? Selected : Data.Tasks.FirstOrDefault(t=>t.Id==Data.Active.TaskId); } }
   public int Remaining { get { return Data.Active==null ? (Selected==null ? Data.Settings.Focus:Selected.Minutes)*60 : (int)Math.Ceiling(Math.Max(0,Data.Active.Duration-Data.Active.Elapsed)); } }
   public string DisplayTime { get { int s=Remaining;return String.Format("{0:00}:{1:00}",s/60,s%60); } }
@@ -132,13 +135,14 @@ namespace LittleTomato {
   public void Signal() { if(Changed!=null)Changed(); }
   public void Select(Todo t) { if(Data.Active!=null && Data.Active.TaskId!=t.Id) End(); Data.Selected=t.Id; Signal(); }
   public void Start(Todo t) {
+   if(t!=null&&t.IsGroup&&(Data.Active==null||Data.Active.TaskId!=t.Id))t=NoteTasks.Next(Data,t);
    if(t==null || t.Done || t.Archived)return;
    if(Data.Active!=null && Data.Active.TaskId==t.Id && Data.Active.Kind=="focus") { Resume();return; }
    if(Data.Active!=null)End();
    Data.Selected=t.Id;Data.Active=new ActiveTimer {TaskId=t.Id,Duration=t.Minutes*60,StartUtc=clock.UtcNow,Running=true};last=clock.Seconds;Signal();
   }
   public Todo EnsureFocusTask() {
-   var task=Selected??Data.Tasks.FirstOrDefault(t=>!t.Done&&!t.Archived);
+   var task=Selected??Data.Tasks.FirstOrDefault(t=>!t.Done&&!t.Archived&&!t.IsGroup);
    if(task==null){task=new Todo {Title=DefaultTaskTitle,Minutes=Data.Settings.Focus};Data.Tasks.Add(task);}
    Data.Selected=task.Id;return task;
   }
@@ -169,7 +173,7 @@ namespace LittleTomato {
    Signal();if(Finished!=null)Finished(message);
   }
   public void End() { Tick();Record(false);Data.Active=null;Signal(); }
-  public void MarkDone(Todo t) { if(Data.Active!=null && Data.Active.TaskId==t.Id)End(); t.Done=!t.Done; if(t.Done && Data.Selected==t.Id)Data.Selected=null;Signal(); }
+  public void MarkDone(Todo t) { if(t.IsGroup)return;if(Data.Active!=null && Data.Active.TaskId==t.Id)End(); t.Done=!t.Done; if(t.Done && Data.Selected==t.Id)Data.Selected=null;NoteTasks.WriteCompletion(Data,t);Signal(); }
   public double Total(string taskId) { double s=Data.Sessions.Where(r=>r.TaskId==taskId).Sum(r=>r.Seconds);var a=Data.Active;return s+(a!=null && a.Kind=="focus" && a.TaskId==taskId?a.Elapsed:0); }
   public int Count(string taskId) { return Data.Sessions.Count(r=>r.TaskId==taskId && r.Complete); }
   public double DayTotal(DateTime day) { string key=day.ToString("yyyy-MM-dd");double total=0,v;foreach(var s in Data.Sessions) { if(s.Days.Count==0) { if(s.StartUtc.ToLocalTime().Date==day.Date)total+=s.Seconds; } else if(s.Days.TryGetValue(key,out v))total+=v; }if(Data.Active!=null && Data.Active.Kind=="focus" && Data.Active.Days.TryGetValue(key,out v))total+=v;return total; }

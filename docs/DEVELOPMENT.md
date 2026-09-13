@@ -43,3 +43,11 @@ UI smoke 必须在有 Explorer 任务栏的 Windows 桌面运行，使用独立�
 `NoteChrome.cs` 负责独立便签标题栏、置顶、折叠与工作区吸附。`WM_NCLBUTTONDBLCLK` 拦截标题栏双击；`WM_MOVING` 仅记录发生过移动，不改写候选矩形；`WM_EXITSIZEMOVE` 按实际物理坐标和目标显示器工作区执行松手吸附，避免 Windows 位置反馈抵消拖离动作。折叠高度不写入便签的展开尺寸。
 
 松手和尺寸调整结束后通过 `NoteDocking.Constrain` 将完整矩形限制在目标工作区内。折叠前记录原矩形与工作区，尺寸变化后用 `AfterResize` 保持底部／右侧贴边位置，再限制在可见范围。
+
+## 便签任务组
+
+`NoteTasks.cs` 提供不依赖窗口的转换、按 ID 关联、层级遍历与汇总；`TaskGroups.cs` 构建任务树筛选与组预览。`NoteGroupTests.cs` 和 `NoteGroupSmoke.cs` 覆盖核心和编辑器联动。
+
+AppData 仍为版本 1，新增可选 `Todo.ParentId/IsGroup/SourceNoteId/SourceBlockId/NoteOrder`、`Note.GroupId` 与 `NoteBlock.Id`。旧便签在支持的文档解码时补足缺失段落 ID；使用附加属性在 WPF Paragraph 上保留 ID，Enter 为新段落分配独立 ID。身份不依赖标题、编号或段落位置。
+
+`SyncExisting` 随正文保存更新已有关联的文字和勾选；显式转换才创建新增任务并调整结构。删行保留任务和会话。任务完成先结束当前专注，随后写回对应便签；编辑窗口刷新时保存撤销状态。组总数使用后代集合汇总，Engine.Total 仍只统计单个 ID，防止全局重复累计。旧组名任务的会话仍属于其原 ID。
