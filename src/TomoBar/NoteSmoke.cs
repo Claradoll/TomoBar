@@ -87,6 +87,29 @@ namespace LittleTomato {
    check(untouched.Left==work.Left+5,"resize-only loop does not trigger snap from previous drag");
    Native.SetWindowPos(handle,IntPtr.Zero,original.Left,original.Top,0,0,0x1|0x4|0x10);
   }
+  static void CheckVisibleBounds(NoteWindow w,Action<bool,string> check,string folder){
+   var handle=new System.Windows.Interop.WindowInteropHelper(w).Handle;Native.RECT original;Native.GetWindowRect(handle,out original);var area=NoteDocking.WorkArea(original);string body=w.Note.Body;double savedHeight=w.Note.Height;
+   foreach(bool folded in new[]{false,true}){
+    if(folded)w.ToggleFold();Native.RECT size;Native.GetWindowRect(handle,out size);
+    foreach(string edge in new[]{"left","right","top","bottom"}){
+     int x=edge=="left"?area.Left-size.Width/2:edge=="right"?area.Right-size.Width/2:area.Left+(area.Width-size.Width)/2;
+     int y=edge=="top"?area.Top-size.Height/2:edge=="bottom"?area.Bottom-size.Height/2:area.Top+(area.Height-size.Height)/2;
+     SendMessage(handle,0x231,IntPtr.Zero,IntPtr.Zero);Native.SetWindowPos(handle,IntPtr.Zero,x,y,0,0,0x1|0x4|0x10);Native.RECT outside;Native.GetWindowRect(handle,out outside);MoveProposal(handle,outside);SendMessage(handle,0x232,IntPtr.Zero,IntPtr.Zero);Native.RECT result;Native.GetWindowRect(handle,out result);
+     check(result.Left>=area.Left&&result.Top>=area.Top&&result.Right<=area.Right&&result.Bottom<=area.Bottom&&result.Width==size.Width&&result.Height==size.Height,(folded?"folded":"expanded")+" note returns fully inside work area after release beyond "+edge);
+    }
+    if(folded)w.ToggleFold();
+   }
+   Native.SetWindowPos(handle,IntPtr.Zero,area.Right-original.Width,area.Bottom-original.Height,0,0,0x1|0x4|0x10);
+   for(int cycle=0;cycle<3;cycle++){
+    SendMessage(handle,0xA3,new IntPtr(2),IntPtr.Zero);w.UpdateLayout();Native.RECT folded;Native.GetWindowRect(handle,out folded);
+    check(w.IsFolded&&folded.Right==area.Right&&folded.Bottom==area.Bottom&&folded.Height<80,"bottom-right anchored title strip stays above taskbar on fold cycle "+cycle);
+    if(cycle==0)Capture(w,Path.Combine(folder,"note-bottom-folded.png"));
+    SendMessage(handle,0xA3,new IntPtr(2),IntPtr.Zero);w.UpdateLayout();Native.RECT expanded;Native.GetWindowRect(handle,out expanded);
+    check(!w.IsFolded&&expanded.Right==area.Right&&expanded.Bottom==area.Bottom&&expanded.Height==original.Height,"unfold grows upward and keeps bottom-right anchor cycle "+cycle);
+   }
+   check(w.Note.Body==body&&Math.Abs(w.Note.Height-savedHeight)<2,"offscreen recovery and repeated folds preserve note body and expanded size");
+   Native.SetWindowPos(handle,IntPtr.Zero,original.Left,original.Top,0,0,0x1|0x4|0x10);
+  }
   static NoteWindow CheckNoteWindow(Program app,NoteWindow w,Action<bool,string> check,string folder){
    var note=w.Note;app.ShowMain();app.Main.ShowPage("notes");app.Main.UpdateLayout();var editor=EditTitle(app,note);editor.Text="读书与灵感";
    check(editor.IsVisible&&w.IsVisible,"single click on list title opens inline editor without replacing note window");
@@ -103,7 +126,7 @@ namespace LittleTomato {
    NamedButton(w,"置顶便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(w.Topmost&&note.Pinned,"pin button remains usable while folded");
    SendMessage(handle,0xA3,new IntPtr(2),IntPtr.Zero);w.UpdateLayout();check(!w.IsFolded&&w.Editor.Visibility==Visibility.Visible&&Math.Abs(w.ActualHeight-height)<2&&note.Body==body,"second titlebar double-click restores original editor size and content");
    SendMessage(handle,0x112,new IntPtr(0xF030),IntPtr.Zero);check(w.WindowState!=WindowState.Maximized,"system maximize command is suppressed for notes");
-   CheckDockDrag(w,check);
+   CheckDockDrag(w,check);CheckVisibleBounds(w,check,folder);
    w.Editor.AppendText("关窗前的新内容");SendMessage(handle,0xA3,new IntPtr(2),IntPtr.Zero);NamedButton(w,"关闭便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(!w.IsVisible&&app.Store.Load().Notes.First(n=>n.Id==note.Id).PlainText.Contains("关窗前的新内容")&&!note.Deleted,"close button on folded note saves content and keeps note in list");
    w=app.Notes.Open(note);check(!w.IsFolded&&Math.Abs(w.Height-height)<2&&w.Topmost&&w.Title.Contains("读书与灵感"),"reopening closed note restores expanded size, saved title and pin state");
    NamedButton(w,"最小化便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(w.WindowState==WindowState.Minimized,"header minimize button minimizes note");app.Notes.Open(note);check(w.WindowState==WindowState.Normal&&w.IsVisible,"opening from list restores minimized note");

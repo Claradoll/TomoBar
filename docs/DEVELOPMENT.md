@@ -41,3 +41,5 @@ UI smoke 必须在有 Explorer 任务栏的 Windows 桌面运行，使用独立�
 便签正文版本 1 继续兼容。编号／分点与待办组合时使用正文版本 2，`Checklist` 独立于段落 `Kind`；普通待办保留旧 `check` 表示。未知正文版本拒绝编辑但保留原文。WPF 的 `TextRange.Text` 会带入自动列表标记，选区与光标偏移应只统计可编辑字符。
 
 `NoteChrome.cs` 负责独立便签标题栏、置顶、折叠与工作区吸附。`WM_NCLBUTTONDBLCLK` 拦截标题栏双击；`WM_MOVING` 仅记录发生过移动，不改写候选矩形；`WM_EXITSIZEMOVE` 按实际物理坐标和目标显示器工作区执行松手吸附，避免 Windows 位置反馈抵消拖离动作。折叠高度不写入便签的展开尺寸。
+
+松手和尺寸调整结束后通过 `NoteDocking.Constrain` 将完整矩形限制在目标工作区内。折叠前记录原矩形与工作区，尺寸变化后用 `AfterResize` 保持底部／右侧贴边位置，再限制在可见范围。
