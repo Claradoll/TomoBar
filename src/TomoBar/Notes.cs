@@ -57,6 +57,7 @@ namespace LittleTomato {
    try{var doc=NoteCodec.Decode(n.Body);window=new NoteWindow(app,n,doc);windows[n.Id]=window;window.Closed+=(s,e)=>{windows.Remove(n.Id);Changed();};window.Show();window.Activate();return window;}
    catch(Exception ex){UI.Notice(app.Main,"便签未能打开，原始内容未被覆盖。\n"+ex.Message);return null;}
   }
+  public bool Rename(Note note,string value){string previous=note.Title;long updated=note.Updated;note.Title=(value??"").Trim();note.Updated=DateTime.UtcNow.Ticks;if(!app.Save()){note.Title=previous;note.Updated=updated;return false;}NoteWindow window;if(windows.TryGetValue(note.Id,out window))window.RefreshHeader();Changed();return true;}
   public void RefreshTheme(){foreach(var w in windows.Values)w.RefreshTheme();}
   public void Changed(){if(app.Main!=null)app.Main.RefreshNoteList();}
   public bool Flush(){foreach(var w in windows.Values.ToArray())if(!w.Flush())return false;return true;}

@@ -11,7 +11,7 @@ using System.Windows.Threading;
 using System.Windows.Automation;
 
 namespace LittleTomato {
- public class NoteWindow : Window {
+ public partial class NoteWindow : Window {
   readonly Program app;public readonly Note Note;public readonly RichTextBox Editor;
   public ContextMenu EditMenu;Border tint;DispatcherTimer saveTimer;MenuItem pinItem,taskItems;
   bool loading,dirty;string lastBody;readonly Stack<EditState> undo=new Stack<EditState>(),redo=new Stack<EditState>();
@@ -20,7 +20,7 @@ namespace LittleTomato {
    app=owner;Note=note;Title="便签";Style=(Style)Application.Current.FindResource(typeof(Window));UI.Chrome(this);Icon=app.IconSource;
    Width=Math.Min(note.Width,SystemParameters.WorkArea.Width-24);Height=Math.Min(note.Height,SystemParameters.WorkArea.Height-24);MinWidth=280;MinHeight=240;WindowStartupLocation=WindowStartupLocation.CenterScreen;Topmost=note.Pinned;
    var root=new Grid();root.RowDefinitions.Add(new RowDefinition{Height=new GridLength(36)});root.RowDefinitions.Add(new RowDefinition{Height=new GridLength(2)});root.RowDefinitions.Add(new RowDefinition());
-   var chrome=UI.Titlebar(this,"",true);foreach(var b in chrome.Children.OfType<Button>()){if(AutomationProperties.GetName(b)=="最小化")b.ToolTip="最小化便签";if(AutomationProperties.GetName(b)=="收起窗口")b.ToolTip="关闭便签，自动保存内容";}chrome.Height=36;System.Windows.Shell.WindowChrome.GetWindowChrome(this).CaptionHeight=36;root.Children.Add(chrome);
+   root.Children.Add(BuildNoteHeader());
    tint=new Border{Height=2,VerticalAlignment=VerticalAlignment.Top};Grid.SetRow(tint,1);root.Children.Add(tint);
    Editor=new RichTextBox{BorderThickness=new Thickness(0),Padding=new Thickness(22,14,22,18),VerticalScrollBarVisibility=ScrollBarVisibility.Auto,AcceptsTab=false,IsDocumentEnabled=true,IsUndoEnabled=false,FontSize=15,Background=Brushes.Transparent};Editor.SetResourceReference(Control.ForegroundProperty,"Ink");Editor.SetResourceReference(RichTextBox.CaretBrushProperty,"Ink");AutomationProperties.SetName(Editor,"便签正文");Grid.SetRow(Editor,2);root.Children.Add(Editor);
    DataObject.AddPastingHandler(Editor,(s,e)=>{if(e.SourceDataObject.GetDataPresent(DataFormats.UnicodeText))e.FormatToApply=DataFormats.UnicodeText;else e.CancelCommand();});
@@ -31,7 +31,7 @@ namespace LittleTomato {
    Editor.PreviewTextInput+=(s,e)=>{if(e.Text==" "){var p=Editor.CaretPosition.Paragraph;if(p==null)return;string prefix=TextBefore(p,Editor.CaretPosition);string kind=prefix=="-"||prefix=="*"?"bullet":prefix=="1."?"number":prefix=="[]"||prefix=="[ ]"?"check":null;if(kind!=null&&Plain(p)==prefix){loading=true;new TextRange(AtCharacter(p,0),Editor.CaretPosition).Text="";loading=false;SetKind(kind);e.Handled=true;}else Dispatcher.BeginInvoke(new Action(AutoLink),DispatcherPriority.Background);}};
    Editor.PreviewMouseLeftButtonDown+=(s,e)=>{if(Keyboard.Modifiers!=ModifierKeys.Control)return;var pos=Editor.GetPositionFromPoint(e.GetPosition(Editor),true);var p=pos==null?null:pos.Paragraph;if(p==null)return;for(DependencyObject parent=pos.Parent;parent!=null;parent=LogicalTreeHelper.GetParent(parent)){var target=parent as Hyperlink;if(target!=null&&target.NavigateUri!=null){OpenLink(target.NavigateUri.AbsoluteUri);e.Handled=true;return;}}string text=Plain(p);int index=CharacterOffset(p,pos);foreach(Match match in Regex.Matches(text,@"https?://[^\s<>]+")){if(index>=match.Index&&index<=match.Index+match.Length){OpenLink(match.Value.TrimEnd('.',',','。','，',')','）'));e.Handled=true;break;}}};
    CommandBindings.Add(new CommandBinding(ApplicationCommands.Undo,(s,e)=>UndoEdit(),(s,e)=>{e.CanExecute=true;e.Handled=true;}));CommandBindings.Add(new CommandBinding(ApplicationCommands.Redo,(s,e)=>RedoEdit(),(s,e)=>{e.CanExecute=true;e.Handled=true;}));
-   Closing+=(s,e)=>{if(!Flush())e.Cancel=true;};Closed+=(s,e)=>saveTimer.Stop();Loaded+=(s,e)=>{Editor.Focus();};SizeChanged+=(s,e)=>{if(IsLoaded&&WindowState==WindowState.Normal){Note.Width=ActualWidth;Note.Height=ActualHeight;Schedule();}};
+   Closing+=(s,e)=>{if(!Flush())e.Cancel=true;};Closed+=(s,e)=>saveTimer.Stop();Loaded+=(s,e)=>{Editor.Focus();};SizeChanged+=(s,e)=>{if(IsLoaded&&!resizingFold&&!IsFolded&&WindowState==WindowState.Normal){Note.Width=ActualWidth;Note.Height=ActualHeight;Schedule();}};
   }
   static MenuItem Menu(ItemsControl owner,string text,Action action){var item=new MenuItem{Header=text,Style=(Style)Application.Current.FindResource("NoteMenuItem")};if(action!=null)item.Click+=(s,e)=>action();owner.Items.Add(item);return item;}
   static Separator MenuSeparator(){return new Separator{Style=(Style)Application.Current.FindResource("NoteMenuSeparator")};}
@@ -58,7 +58,7 @@ namespace LittleTomato {
    Menu(menu,"插入链接",InsertLink);menu.Items.Add(MenuSeparator());
    var history=Menu(menu,"编辑历史",null);var undoItem=Menu(history,"撤销",UndoEdit);undoItem.InputGestureText="Ctrl+Z";var redoItem=Menu(history,"重做",RedoEdit);redoItem.InputGestureText="Ctrl+Y";
    var options=Menu(menu,"便签选项",null);
-   pinItem=Menu(options,"置顶便签",()=>{Note.Pinned=!Note.Pinned;Topmost=Note.Pinned;pinItem.IsChecked=Note.Pinned;Schedule();});pinItem.IsCheckable=true;
+   pinItem=Menu(options,"置顶便签",TogglePin);pinItem.IsCheckable=true;
    var colors=Menu(options,"便签颜色",null);var colorItems=new Dictionary<string,MenuItem>();string[] colorKeys={"paper","sage","rose"},colorNames={"奶油纸","鼠尾草","浅玫瑰"};
    for(int i=0;i<colorKeys.Length;i++){string color=colorKeys[i];var item=Menu(colors,colorNames[i],()=>{Note.Color=color;ApplyColor();Schedule();});item.IsCheckable=true;colorItems[color]=item;}
    options.Items.Add(MenuSeparator());taskItems=Menu(options,"关联任务",null);
@@ -80,7 +80,7 @@ namespace LittleTomato {
    return menu;
   }
   void ApplyColor(){bool dark=app.Data.Settings.Theme=="dark"||app.Data.Settings.Theme=="system"&&!Native.AppsLight;string color=Note.Color=="sage"?(dark?"#242D26":"#F1F6EC"):Note.Color=="rose"?(dark?"#302527":"#FFF2EF"):(dark?"#2C291F":"#FFFAEA");Background=new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));if(tint!=null)tint.Background=new SolidColorBrush((Color)ColorConverter.ConvertFromString(Note.Color=="sage"?"#98B29B":Note.Color=="rose"?"#D4A1A3":"#D9BA77"));}
-  void Schedule(){if(loading||saveTimer==null)return;dirty=true;Note.Updated=DateTime.UtcNow.Ticks;saveTimer.Stop();saveTimer.Start();}
+  void Schedule(){if(loading||saveTimer==null)return;dirty=true;Note.Updated=DateTime.UtcNow.Ticks;RefreshHeader();saveTimer.Stop();saveTimer.Start();}
   public bool Flush(){if(saveTimer!=null)saveTimer.Stop();if(!dirty)return true;if(!app.Save())return false;dirty=false;app.Notes.Changed();return true;}
   int Offset(){return Editor.Document.ContentStart.GetOffsetToPosition(Editor.CaretPosition);}
   public void Record(){if(loading)return;var doc=Capture();string body=Store.Encode(doc);if(body==lastBody)return;if(lastBody!=null){undo.Push(new EditState{Body=lastBody,Offset=Offset()});if(undo.Count>200){var keep=undo.Take(150).Reverse().ToArray();undo.Clear();foreach(var state in keep)undo.Push(state);}redo.Clear();}lastBody=body;Note.Body=body;Note.PlainText=doc.PlainText;Schedule();}

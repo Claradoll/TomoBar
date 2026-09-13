@@ -15,7 +15,7 @@ namespace LittleTomato {
  public static class NoteSmoke {
   static void Capture(FrameworkElement w,string path){w.UpdateLayout();var bmp=new RenderTargetBitmap((int)w.ActualWidth,(int)w.ActualHeight,96,96,PixelFormats.Pbgra32);bmp.Render(w);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bmp));using(var f=File.Create(path))encoder.Save(f);}
   static IEnumerable<DependencyObject> Children(DependencyObject root){for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){var c=VisualTreeHelper.GetChild(root,i);yield return c;foreach(var v in Children(c))yield return v;}}
-  static void Enter(NoteWindow w){w.Editor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(w),0,Key.Enter){RoutedEvent=Keyboard.PreviewKeyDownEvent});}
+  static void Enter(NoteWindow w){w.UpdateLayout();w.Editor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(w),0,Key.Enter){RoutedEvent=Keyboard.PreviewKeyDownEvent});}
   static MenuItem Item(ItemsControl menu,string name){foreach(var item in menu.Items.OfType<MenuItem>()){if(String.Equals(item.Header,name))return item;var nested=Item(item,name);if(nested!=null)return nested;}return null;}
   static void Click(NoteWindow w,string name){Item(w.EditMenu,name).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));}
   static List<Paragraph> Blocks(NoteWindow w){return w.Editor.Document.Blocks.SelectMany(b=>b is Paragraph?new[]{(Paragraph)b}:((System.Windows.Documents.List)b).ListItems.SelectMany(item=>item.Blocks.OfType<Paragraph>())).ToList();}
@@ -51,6 +51,33 @@ namespace LittleTomato {
    check(!w.EditMenu.Items.OfType<MenuItem>().Any(i=>String.Equals(i.Header,"移到回收站"))&&Item(w.EditMenu,"便签选项")!=null&&Item(w.EditMenu,"编辑历史")!=null,"root menu groups note management and edit history away from formatting");w.EditMenu.IsOpen=false;
    return w;
   }
+  [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window,int message,IntPtr wp,IntPtr lp);
+  static Button NamedButton(DependencyObject root,string name){return Children(root).OfType<Button>().First(b=>System.Windows.Automation.AutomationProperties.GetName(b)==name);}
+  static TextBox EditTitle(Program app,Note note){NamedButton(app.Main,"编辑便签标题 "+note.Id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));return Children(app.Main).OfType<TextBox>().First(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="便签标题 "+note.Id);}
+  static void TitleKey(NoteWindow w,TextBox editor,Key key){editor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice,PresentationSource.FromVisual(w),0,key){RoutedEvent=Keyboard.PreviewKeyDownEvent});}
+  static NoteWindow CheckNoteWindow(Program app,NoteWindow w,Action<bool,string> check,string folder){
+   var note=w.Note;app.ShowMain();app.Main.ShowPage("notes");app.Main.UpdateLayout();var editor=EditTitle(app,note);editor.Text="读书与灵感";
+   check(editor.IsVisible&&w.IsVisible,"single click on list title opens inline editor without replacing note window");
+   w.Editor.AppendText("编辑期间的正文");w.Flush();check(Children(app.Main).Contains(editor)&&editor.Text=="读书与灵感","background note save does not discard in-progress title input");
+   TitleKey(w,editor,Key.Enter);check(note.Title=="读书与灵感"&&w.Title.Contains(note.Title)&&Children(w).OfType<TextBlock>().Any(t=>t.Text==note.Title)&&app.Store.Load().Notes.First(n=>n.Id==note.Id).Title==note.Title,"Enter saves title and synchronizes live note header");
+   editor=EditTitle(app,note);editor.Text="取消的标题";TitleKey(w,editor,Key.Escape);check(note.Title=="读书与灵感","Escape cancels title editing");
+   editor=EditTitle(app,note);editor.Text="点击别处保存";editor.RaiseEvent(new KeyboardFocusChangedEventArgs(Keyboard.PrimaryDevice,0,editor,w.Editor){RoutedEvent=Keyboard.LostKeyboardFocusEvent});check(note.Title=="点击别处保存","leaving title field commits input");
+   editor=EditTitle(app,note);editor.Text="";TitleKey(w,editor,Key.Enter);check(note.Title==""&&w.Title=="便签 · "+note.DisplayTitle,"blank custom title restores body-derived title in header");
+   app.Notes.Rename(note,"读书与灵感");check(!Children(w).OfType<Button>().Any(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="最大化"),"note header has no maximize button");
+   NamedButton(w,"置顶便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(note.Pinned&&w.Topmost,"header pin button enables always-on-top");Click(w,"置顶便签");check(!note.Pinned&&!w.Topmost&&NamedButton(w,"置顶便签")!=null,"context menu unpin synchronizes header button");
+   double height=w.ActualHeight,width=w.ActualWidth;string body=note.Body;var handle=new System.Windows.Interop.WindowInteropHelper(w).Handle;
+   SendMessage(handle,0xA3,new IntPtr(2),IntPtr.Zero);w.UpdateLayout();check(w.IsFolded&&w.ActualHeight<=40&&w.Editor.Visibility==Visibility.Collapsed&&Math.Abs(w.ActualWidth-width)<2,"native titlebar double-click folds to title-only strip without changing width");
+   Capture(w,Path.Combine(folder,"note-folded.png"));check(Math.Abs(note.Height-height)<2&&note.Body==body,"folding retains expanded dimensions and all note content");
+   NamedButton(w,"置顶便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(w.Topmost&&note.Pinned,"pin button remains usable while folded");
+   SendMessage(handle,0xA3,new IntPtr(2),IntPtr.Zero);w.UpdateLayout();check(!w.IsFolded&&w.Editor.Visibility==Visibility.Visible&&Math.Abs(w.ActualHeight-height)<2&&note.Body==body,"second titlebar double-click restores original editor size and content");
+   SendMessage(handle,0x112,new IntPtr(0xF030),IntPtr.Zero);check(w.WindowState!=WindowState.Maximized,"system maximize command is suppressed for notes");
+   Native.RECT rect;Native.GetWindowRect(handle,out rect);var work=NoteDocking.WorkArea(rect);int rectWidth=rect.Width;rect.Left=work.Right-rectWidth-5;rect.Right=work.Right-5;rect.Top=work.Top+80;rect.Bottom=rect.Top+200;
+   var memory=System.Runtime.InteropServices.Marshal.AllocHGlobal(System.Runtime.InteropServices.Marshal.SizeOf(typeof(Native.RECT)));try{System.Runtime.InteropServices.Marshal.StructureToPtr(rect,memory,false);SendMessage(handle,0x216,IntPtr.Zero,memory);rect=(Native.RECT)System.Runtime.InteropServices.Marshal.PtrToStructure(memory,typeof(Native.RECT));check(rect.Right==work.Right&&rect.Width==rectWidth,"native moving message snaps to current monitor work-area edge without resizing");}finally{System.Runtime.InteropServices.Marshal.FreeHGlobal(memory);}
+   w.Editor.AppendText("关窗前的新内容");SendMessage(handle,0xA3,new IntPtr(2),IntPtr.Zero);NamedButton(w,"关闭便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(!w.IsVisible&&app.Store.Load().Notes.First(n=>n.Id==note.Id).PlainText.Contains("关窗前的新内容")&&!note.Deleted,"close button on folded note saves content and keeps note in list");
+   w=app.Notes.Open(note);check(!w.IsFolded&&Math.Abs(w.Height-height)<2&&w.Topmost&&w.Title.Contains("读书与灵感"),"reopening closed note restores expanded size, saved title and pin state");
+   NamedButton(w,"最小化便签").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));check(w.WindowState==WindowState.Minimized,"header minimize button minimizes note");app.Notes.Open(note);check(w.WindowState==WindowState.Normal&&w.IsVisible,"opening from list restores minimized note");
+   w.TogglePin();app.Notes.Rename(note,"");return w;
+  }
   public static void Start(Program app,string folder){
    var report=new List<string>();int stage=0;NoteWindow w=null;Note note=null;string saved=null;var timer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(1100)};Action<bool,string> check=(ok,msg)=>{report.Add((ok?"PASS ":"FAIL ")+msg);if(!ok)Environment.ExitCode=1;};
    timer.Tick+=(s,e)=>{try{switch(stage++){
@@ -66,7 +93,7 @@ namespace LittleTomato {
      w.SetKind("number");w.Editor.AppendText("编号内容");w.Indent(1);check(w.Capture().Blocks.Last().Indent==1&&w.Capture().Blocks.Last().Kind=="number","numbered list supports indentation");
      Click(w,"大标题");check(w.Capture().Blocks.Last().Kind=="h1","context menu applies heading style");Click(w,"正文");check(w.Capture().Blocks.Last().Kind=="body","context menu returns heading to body text");
      check(!Children(w).OfType<ComboBox>().Any()&&!Children(w).OfType<Button>().Any(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="加粗 · Ctrl+B"),"note surface has no formatting toolbar or settings controls");
-     w=CheckCombined(app,w,check,folder);
+     w=CheckCombined(app,w,check,folder);w=CheckNoteWindow(app,w,check,folder);
      var preview=new NoteDocument();preview.Blocks.Add(new NoteBlock{Kind="h1",Runs=new List<NoteRun>{new NoteRun{Text="把想法，轻轻记下来。"}}});preview.Blocks.Add(new NoteBlock{Runs=new List<NoteRun>{new NoteRun{Text="记录灵感，也照顾好每一个下一步。"}}});preview.Blocks.Add(new NoteBlock{Kind="h2",Runs=new List<NoteRun>{new NoteRun{Text="今天的小清单"}}});preview.Blocks.Add(new NoteBlock{Kind="number",Checklist=true,Done=true,Runs=new List<NoteRun>{new NoteRun{Text="完成一段专注，让思路清晰起来"}}});preview.Blocks.Add(new NoteBlock{Kind="number",Checklist=true,Runs=new List<NoteRun>{new NoteRun{Text="整理桌面上的灵感与待办"}}});preview.Blocks.Add(new NoteBlock{Kind="bullet",Runs=new List<NoteRun>{new NoteRun{Text="重要的想法",Bold=true},new NoteRun{Text="，用简单的格式留下来。"}}});preview.Blocks.Add(new NoteBlock{Runs=new List<NoteRun>{new NoteRun{Text="慢一点，也在向前。",Highlight=true,Italic=true}}});preview.Blocks.Add(new NoteBlock{Runs=new List<NoteRun>{new NoteRun{Text="TomoBar 项目主页",Link="https://github.com/Claradoll/TomoBar"}}});w.Render(preview);w.Record();break;
     case 1:
      check(app.Store.Load().Notes.First(n=>n.Id==note.Id).Body==note.Body,"debounced autosave stores document without manual save");check(app.Data.Active!=null&&app.Data.Active.Running,"editing notes does not pause focus timer");check(note.DisplayTitle=="把想法，轻轻记下来。","blank title uses first content line");Capture(w,Path.Combine(folder,"note-light.png"));app.Main.ShowPage("notes");Capture(app.Main,Path.Combine(folder,"notes-list.png"));
